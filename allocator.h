@@ -16,7 +16,7 @@ typedef struct Cache {
     Slab *free, *partial, *full;
 } Cache;
 
-/* Creates and initializes a new cache for types of 'data_size' length and adds it to the list of caches */
-void cache_init(size_t free_size, size_t partial_size, size_t full_size, size_t data_size);
+/* Returns a pointer to a block of memory of 'size' bytes */
+void* alloc(size_t size);
 
 #endif
