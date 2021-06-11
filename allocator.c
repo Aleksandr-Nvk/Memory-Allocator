@@ -24,11 +24,8 @@ static Cache* cache_new(size_t data_size) {
     cache->full_slabs = list_new();
 
     /* fill the array for free slabs */
-    for (int i = 0; i < cache->free_slabs.capacity; ++i) {
-        size_t size = ADDRESSES_IN_SLAB * data_size;
-        void* cache_start = mmap(NULL, size, ACCESS, VISIBILITY, -1, 0);    /* allocate memory for each slab */
-
-        Slab new_slab = slab_new(size);
+    for (int i = 0; i < MIN_LIST_CAPACITY; ++i) {
+        Slab new_slab = slab_new(data_size);
         list_add(&cache->free_slabs, new_slab);
     }
 
@@ -44,15 +41,13 @@ void* alloc(size_t size) {
     }
 
     if (head == NULL) {     /* if the Head Cache is NULL, then there are no caches at all */
-        head = cache_new(sizeof(Cache));
-        head->next = tail = cache = cache_new(size);
+        head = tail = cache = cache_new(size);
     } else {
-        cache = head->next;
+        cache = head;
 
         /* search for cache with matching data size */
         while (cache != NULL) {
             if (cache->data_size == size) {
-                cache = cache;
                 goto found;     /* jump over one excessive NULL-check */
             } else {
                 cache = cache->next;
@@ -69,7 +64,7 @@ void* alloc(size_t size) {
     if (cache->free_slabs.count > 0) {
         Slab free_slab = list_get_last(&cache->free_slabs);
         free_slab.addr_amount -= size;
-        object = free_slab.start + free_slab.addr_amount - 1;
+        object = free_slab.start + free_slab.addr_amount;
 
         list_add(&cache->partial_slabs, free_slab);
 
