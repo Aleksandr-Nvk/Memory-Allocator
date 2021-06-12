@@ -4,30 +4,30 @@
 #include <stdio.h>
 #include <sys/mman.h>
 
-#define ADDRESSES_IN_SLAB       4096    /* amount of addresses in one slab */
-#define MIN_LIST_CAPACITY       4
+#define INIT_FREE_BUF_SIZE      8    /* initial amount of nodes for a buffer of free slabs */
 
 #define ACCESS          PROT_READ | PROT_WRITE          /* common access mode for allocated memory */
 #define VISIBILITY      MAP_PRIVATE | MAP_ANONYMOUS     /* common visibility mode for allocated memory */
 
-/* Slab contains several pages of memory */
+/* Slab contains range of memory addresses. It is also a node of a linked list */
 typedef struct Slab {
+    struct Slab* next;
+
+    size_t data_size;   /* size of data blocks stored in this slab */
+
+    int is_full;    /* is this slab completely allocated? */
+
     void* start;    /* the first memory address */
-    size_t addr_amount;    /* amount of addresses */
+    void* end;    /* the last memory address */
 } Slab;
 
-typedef struct List {
-    Slab* array;
-
-    size_t count;            /* amount of items currently stored in list */
-    size_t capacity;            /* possible amount of items stored in list (can be expanded) */
-} List;
-
-/* Cache is a node of a free list. Contains arrays of slabs of free, partial and full types */
+/* Cache is a node of a linked list. Contains lists of slabs of free, partial and full types */
 typedef struct Cache {
     struct Cache* next;
+
     size_t data_size;
-    List free_slabs, partial_slabs, full_slabs;
+
+    Slab *free_buf_head, *partial_buf_head, *full_buf_head;
 } Cache;
 
 /* Returns a pointer to a block of 'size' bytes of memory */

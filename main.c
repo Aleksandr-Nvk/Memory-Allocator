@@ -1,13 +1,19 @@
 #include "allocator.h"
 #include <stdlib.h>
 #include <time.h>
+#include <unistd.h>
 
 int main(void) {
+    for (int i = 0; i < 1000000; ++i) {
+        alloc(1);
+    }
+
+    return 0;
     for (int k = 0; k < 5; ++k) {
-        void* addresses[1000];
+        void* addresses[1000000];
         clock_t start = clock();
 
-        for (int i = 0; i < 1000; ++i) {
+        for (int i = 0; i < 1000000; ++i) {
             addresses[i] = alloc(4);
         }
 
