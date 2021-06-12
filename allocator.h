@@ -15,8 +15,6 @@ typedef struct Slab {
 
     size_t data_size;   /* size of data blocks stored in this slab */
 
-    int is_full;    /* is this slab completely allocated? */
-
     void* start;    /* the first memory address */
     void* end;    /* the last memory address */
 } Slab;
