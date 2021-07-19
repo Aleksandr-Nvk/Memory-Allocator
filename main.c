@@ -1,12 +1,13 @@
 #include "allocator.h"
 #include <stdlib.h>
+#include <stdio.h>
 #include <time.h>
 
 int main(void) {
     for (int i = 0; i < 4; ++i) {
         clock_t astart = clock();
 
-        for (int f = 0; f < 100000; ++f) {
+        for (int f = 0; f < 10000000; ++f) {
             alloc(i);
         }
 
@@ -14,7 +15,7 @@ int main(void) {
 
         clock_t mstart = clock();
 
-        for (int f = 0; f < 100000; ++f) {
+        for (int f = 0; f < 10000000; ++f) {
             malloc(i);
         }
 
