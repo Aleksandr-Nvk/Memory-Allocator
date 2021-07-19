@@ -4,7 +4,7 @@
 #include <stdio.h>
 #include <sys/mman.h>
 
-#define INIT_FREE_BUF_SIZE      8    /* initial amount of nodes for a buffer of free slabs */
+#define INIT_BUF_SIZE      64    /* initial amount of nodes for a buffer of slabs */
 
 #define ACCESS          PROT_READ | PROT_WRITE          /* common access mode for allocated memory */
 #define VISIBILITY      MAP_PRIVATE | MAP_ANONYMOUS     /* common visibility mode for allocated memory */
@@ -29,6 +29,6 @@ typedef struct Cache {
 } Cache;
 
 /* Returns a pointer to a block of 'size' bytes of memory */
-void* alloc(size_t size);
+__attribute__((warn_unused_result)) void* alloc(size_t size);
 
 #endif

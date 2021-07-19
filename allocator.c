@@ -2,8 +2,15 @@
 #include <unistd.h>
 
 Cache* head = NULL;    /* head of the linked list */
+static int nodes;
 
-static Cache* get_tail_cache(Cache* current) {
+Cache* get_tail_cache() {
+    if (head == NULL) {
+        return NULL;
+    }
+
+    Cache* current = head;
+
     while (current->next != NULL) {
         current = current->next;
     }
@@ -11,120 +18,117 @@ static Cache* get_tail_cache(Cache* current) {
     return current;
 }
 
-static Slab* get_tail_slab(Slab* current, int remove) {
-    Slab* previous;
-    while (current->next != NULL) {
-        previous = current;
+void remove_tail_slab(Slab** head_slab) {
+    if ((*head_slab)->next == NULL) {
+        *head_slab = NULL;
+        return;
+    }
+
+    Slab* current = *head_slab;
+
+    while (current->next->next != NULL) {
         current = current->next;
     }
 
-    if (remove) {
-        previous->next = NULL;
+    current->next = NULL;
+}
+
+Slab* get_tail_slab(Slab* current) {
+    if (current == NULL) {
+        return NULL;
     }
-    
+
+    while (current->next != NULL) {
+        current = current->next;
+    }
+
     return current;
-}
-
-static void add_tail_slab(Slab* current, Slab* to_add) {
-    get_tail_slab(current, 0)->next = to_add;
-}
-
-static void* mem_slice(void** mem, size_t* mem_size, size_t requested_size) {
-    if (requested_size <= *mem_size) {
-        void* mem_cached = *mem;
-        *mem_size -= requested_size;
-        *mem += requested_size;
-        return mem_cached;
-    }
-
-    perror("NOT ENOUGH MEMORY");
-    return NULL;
-}
-
-static Slab* slab_new(void* mem, size_t* all_size, size_t slab_size, size_t slab_mem_size, size_t data_size) {
-    Slab* new_slab = mem_slice(&mem, all_size, slab_size);
-    new_slab->next = NULL;
-    new_slab->data_size = data_size;
-    new_slab->start = mem_slice(&mem, all_size, slab_mem_size);
-    new_slab->end = new_slab->start + slab_mem_size - 1;
-
-    return new_slab;
 }
 
 /* Creates a new cache for 'data_size'-length types, adds it to the linked list and returns it */
 static Cache* cache_new(size_t data_size) {
-    size_t cache_size = sizeof(Cache);
-    size_t slab_size = sizeof(Slab);
-    size_t slab_mem_size = data_size * getpagesize() / 8;
-    size_t all_size = cache_size + (slab_size + slab_mem_size) * INIT_FREE_BUF_SIZE;
+    size_t cache_struct_size = sizeof(Cache);
+    size_t slab_struct_size = sizeof(Slab);
+    size_t slab_content_size = getpagesize() * data_size;
 
-    void* mem = mmap(NULL, all_size, ACCESS, VISIBILITY, -1, 0);
+    size_t all_size = (slab_content_size + slab_struct_size) * INIT_BUF_SIZE + cache_struct_size;
 
-    Cache* new_cache = mem_slice(&mem, &all_size, cache_size);
-    new_cache->next = NULL;
+    void* raw_mem = mmap(NULL, all_size, ACCESS, VISIBILITY, -1, 0);
+
+    Cache* new_cache = raw_mem;
+    raw_mem += cache_struct_size;
+
+    if (head == NULL) {
+        head = new_cache;
+    } else {
+        get_tail_cache()->next = new_cache;
+    }
+
     new_cache->data_size = data_size;
+    new_cache->next = NULL;
+    new_cache->free_buf_head = new_cache->partial_buf_head = new_cache->full_buf_head = NULL;
 
-    new_cache->free_buf_head = NULL;
-    new_cache->partial_buf_head = NULL;
-    new_cache->full_buf_head = NULL;
+    for (int i = 0; i < INIT_BUF_SIZE; ++i) {
+        Slab* new_slab = raw_mem;
+        raw_mem += slab_struct_size;
 
-    for (int i = 0; i < INIT_FREE_BUF_SIZE; ++i) {
-        Slab* new_slab = slab_new(&mem, &all_size, slab_size, slab_mem_size, data_size);
+        new_slab->next = NULL;
+        new_slab->data_size = data_size;
+
+        new_slab->start = raw_mem;
+        raw_mem += slab_content_size;
+        new_slab->end = raw_mem - 1;
 
         if (new_cache->free_buf_head == NULL) {
             new_cache->free_buf_head = new_slab;
         } else {
-            add_tail_slab(new_cache->free_buf_head, new_slab);
+            get_tail_slab(new_cache->free_buf_head)->next = new_slab;
         }
     }
-
-    if (head == NULL) {
-        return head = new_cache;
-    }
-
-    return get_tail_cache(head)->next = new_cache;
+    ++nodes;
+    return new_cache;
 }
 
-static void* get_data(Cache* cache) {
-    Slab* slab;
-    void* object;
-    
+void* get_data(Cache* cache) {
+    size_t data_size = cache->data_size;
+    void* data;
+
     if (cache->free_buf_head != NULL) {
-        slab = get_tail_slab(cache->free_buf_head, 1);    /* DEBUGGER INTERRUPTS AT THIS LINE */
-        
-        if (cache->partial_buf_head != NULL) {
-            add_tail_slab(cache->partial_buf_head, slab);
-        } else {
+        Slab* slab = get_tail_slab(cache->free_buf_head);
+        data = slab->start;
+        slab->start += data_size;
+
+        if (cache->partial_buf_head == NULL) {
             cache->partial_buf_head = slab;
+        } else {
+            get_tail_slab(cache->partial_buf_head)->next = slab;
         }
+
+        remove_tail_slab(&cache->free_buf_head);
+
     } else if (cache->partial_buf_head != NULL) {
-        slab = get_tail_slab(cache->partial_buf_head, 0);
-        
+        Slab* slab = get_tail_slab(cache->partial_buf_head);
+        data = slab->start;
+        slab->start += data_size;
+
         if (slab->start > slab->end) {
-            get_tail_slab(cache->partial_buf_head, 1);
+            if (cache->full_buf_head == NULL) {
+                cache->full_buf_head = slab;
+            } else {
+                get_tail_slab(cache->full_buf_head)->next = slab;
+            }
+
+            remove_tail_slab(&cache->partial_buf_head);
         }
     } else {
-        size_t slab_size = sizeof(Slab);
-        size_t slab_mem_size = cache->data_size * getpagesize() / 8;
-        size_t all_size = slab_size + slab_mem_size;
-        void* mem = alloc(all_size);
-        slab = slab_new(&mem, &all_size, slab_size, slab_mem_size, cache->data_size);
-
-        if (cache->partial_buf_head != NULL) {
-            add_tail_slab(cache->partial_buf_head, slab);
-        } else {
-            cache->partial_buf_head = slab;
-        }
+        data = get_data(cache_new(data_size));
     }
 
-    object = slab->start;
-    slab->start += slab->data_size;
-
-    return object;
+    return data;
 }
 
 /* Returns a pointer to a block of 'size' bytes of memory */
-void* alloc(size_t size) {
+__attribute__((warn_unused_result)) void* alloc(size_t size) {
     if (size == 0) {
         return NULL;
     }

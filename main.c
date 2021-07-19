@@ -3,35 +3,22 @@
 #include <time.h>
 
 int main(void) {
+    for (int i = 0; i < 4; ++i) {
+        clock_t astart = clock();
 
-    for (int i = 0; i < 100; ++i) {
-        alloc(2);
-    }
-
-    return 0;
-    alloc(2);
-    malloc(2);
-    for (int k = 0; k < 1; ++k) {
-        void* addresses[100];
-        clock_t start = clock();
-
-        for (int i = 0; i < 100; ++i) {
-            addresses[i] = alloc(2);
+        for (int f = 0; f < 100000; ++f) {
+            alloc(i);
         }
 
-        printf("\nalloc(): done in %0.9LF secs.", (long double)(clock() - start) / (long double)CLOCKS_PER_SEC);
-
-        void* maddresses[100];
+        printf("\nalloc(): done in %0.8LF secs.", (long double)(clock() - astart) / (long double)CLOCKS_PER_SEC);
 
         clock_t mstart = clock();
 
-        for (int i = 0; i < 100; ++i) {
-            maddresses[i] = malloc(2);
+        for (int f = 0; f < 100000; ++f) {
+            malloc(i);
         }
 
-        printf("\nmalloc(): done in %0.9LF secs.", (long double)(clock() - mstart) / (long double)CLOCKS_PER_SEC);
-
-        putchar('\n');
+        printf("\nmalloc(): done in %0.8LF secs.\n", (long double)(clock() - mstart) / (long double)CLOCKS_PER_SEC);
     }
 
     return 0;
