@@ -1,13 +1,15 @@
 #include <unistd.h>
 #include "allocator.h"
 
-Cache* root = NULL;    /* root of a binary tree of caches */
+Cache* root = NULL;    /* root of the binary tree of caches */
 
-void* sys_alloc(size_t size) {
-    return mmap(NULL, size, ACCESS, VISIBILITY, -1, 0);
+/* a wrap around the system call */
+static void* sys_alloc(size_t size) {
+    return mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 }
 
-void add_cache(Cache* cache) {
+/* adds 'cache' to the binary tree of caches, based on data_size in 'cache' */
+static void tree_add_cache(Cache* cache) {
     if (root == NULL) {
         root = cache;
         return;
@@ -21,18 +23,21 @@ void add_cache(Cache* cache) {
                 current->left = cache;
                 return;
             }
+
             current = current->left;
         } else {
             if (current->right == NULL) {
                 current->right = cache;
                 return;
             }
+
             current = current->right;
         }
     }
 }
 
-Cache* get_cache_of_size(size_t data_size) {
+/* searches for a cache with 'data_size' slabs in the binary tree of caches and returns it (or NULL if not found) */
+static Cache* get_cache_of_size(size_t data_size) {
     Cache* current = root;
 
     while (1) {
@@ -43,15 +48,12 @@ Cache* get_cache_of_size(size_t data_size) {
             return current;
         }
 
-        if (data_size < current->data_size) {
-            current = current->left;
-        } else {
-            current = current->right;
-        }
+        current = data_size < current->data_size ? current->left : current->right;
     }
 }
 
-void cache_add_free_slabs(Cache* cache, void* mem, size_t amount) {
+/* splits 'mem' and uses it to create 'amount' of slabs, which are added to 'cache' */
+static void cache_add_free_slabs(Cache* cache, void* mem, size_t amount) {
     size_t slab_struct_size = sizeof(Slab);
     size_t slab_size = getpagesize() * cache->data_size;
 
@@ -70,7 +72,8 @@ void cache_add_free_slabs(Cache* cache, void* mem, size_t amount) {
     }
 }
 
-Cache* cache_new(size_t data_size) {
+/* creates a new cache for slabs containing 'data_size' memory pieces and adds it to the binary tree of caches */
+static Cache* cache_new(size_t data_size) {
     size_t cache_struct_size = sizeof(Cache);
     size_t slab_struct_size = sizeof(Slab);
     size_t slab_size = getpagesize() * data_size;
@@ -85,12 +88,13 @@ Cache* cache_new(size_t data_size) {
 
     cache_add_free_slabs(new_cache, raw_mem, INIT_BUF_SIZE);
 
-    add_cache(new_cache);
+    tree_add_cache(new_cache);
 
     return new_cache;
 }
 
-void* get_data(Cache* cache) {
+/* returns a pointer to memory of size, determined in 'cache' */
+void* cache_extract_mem(Cache* cache) {
     size_t data_size = cache->data_size;
     Slab* slab = cache->free_buff;
 
@@ -110,9 +114,10 @@ void* get_data(Cache* cache) {
         return data;
     }
 
-    cache_add_free_slabs(cache, sys_alloc((sizeof(Slab) + getpagesize() * data_size * INIT_BUF_SIZE)), INIT_BUF_SIZE);
+    void* mem = sys_alloc(sizeof(Slab) + getpagesize() * data_size * INIT_BUF_SIZE);
+    cache_add_free_slabs(cache, mem, INIT_BUF_SIZE);
 
-    return get_data(cache);
+    return cache_extract_mem(cache);
 }
 
 __attribute__((warn_unused_result)) void* alloc(size_t size) {
@@ -126,5 +131,5 @@ __attribute__((warn_unused_result)) void* alloc(size_t size) {
         cache = cache_new(size);
     }
 
-    return get_data(cache);
+    return cache_extract_mem(cache);
 }

@@ -5,9 +5,6 @@
 
 #define INIT_BUF_SIZE      8    /* initial amount of nodes for a buffer of slabs */
 
-#define ACCESS          PROT_READ | PROT_WRITE          /* common access mode for allocated memory */
-#define VISIBILITY      MAP_PRIVATE | MAP_ANONYMOUS     /* common visibility mode for allocated memory */
-
 typedef enum State {
     freee,
     partial,
@@ -39,8 +36,5 @@ typedef struct Cache {
 
 /* Returns a pointer to a block of 'size' bytes of memory */
 __attribute__((warn_unused_result)) void* alloc(size_t size);
-
-void add_cache(Cache* cache);
-Cache* get_cache_of_size(size_t data_size);
 
 #endif
