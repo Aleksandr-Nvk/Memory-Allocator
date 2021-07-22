@@ -3,7 +3,7 @@ project(Memory_Allocator C)
 
 set(CMAKE_C_STANDARD 99)
 
-add_executable(Memory_Allocator main.c allocator.c)
+add_executable(Memory_Allocator main.c source/allocator.c source/cache.c source/slab.c source/slot.c)
 
 target_include_directories(Memory_Allocator PUBLIC include)
 
