@@ -1,6 +1,7 @@
 #include "cache.h"
 #include <sys/mman.h>
 #include <unistd.h>
+#include <printf.h>
 
 Cache* root = NULL;    /* root of the binary tree of caches */
 size_t page_size;
@@ -42,6 +43,7 @@ void tree_add_cache(Cache* cache) {
 Cache* tree_get_cache_of_size(size_t data_size) {
     Cache* current = root;
 
+    /* standard binary tree search */
     while (1) {
         if (current == NULL) {
             return NULL;
@@ -54,9 +56,10 @@ Cache* tree_get_cache_of_size(size_t data_size) {
     }
 }
 
+/* creates a new cache, adds it to the tree of caches and returns it */
 Cache* cache_new(size_t data_size) {
     if (page_size == 0) {
-        page_size = getpagesize();
+        page_size = getpagesize();    /* do this once, since getpagesize() is a sys call */
     }
 
     size_t slab_size = sizeof(Slab) + page_size * (sizeof(Slot) + data_size);
@@ -70,6 +73,7 @@ Cache* cache_new(size_t data_size) {
     new_cache->data_size = data_size;
     new_cache->free_slab_head = new_cache->partial_slab_head = new_cache->full_slab_head = NULL;
 
+    /* add default amount of slabs to the new cache */
     for (int i = 0; i < INIT_BUF_SIZE; ++i) {
         Slab* new_slab = slab_new(data_size, mem);
         mem += slab_size;
@@ -83,6 +87,7 @@ Cache* cache_new(size_t data_size) {
     return new_cache;
 }
 
+/* extracts memory from 'cache' and manages slabs in it, depending on a condition */
 void* cache_extract_mem(Cache* cache) {
     void* mem;
 
@@ -123,4 +128,38 @@ void* cache_extract_mem(Cache* cache) {
     }
 
     return mem;
+}
+
+/* traverses the tree and looks for a cache that contains 'ptr' in slots in its slabs */
+void tree_free_address(Cache* current, void* ptr) {
+    if (current != NULL) {
+        /* try to free in partial slabs */
+        Slab* freed = slabs_free_address(current->partial_slab_head, ptr);
+
+        /* freed successfully */
+        if (freed != NULL) {
+            /* put the slab to full slabs if all of its slots are used */
+            if (freed->used_slot_head == NULL) {
+                freed->next = current->free_slab_head;
+                current->free_slab_head = freed;
+
+                return;
+            }
+        } else {
+            /* try to free in full slabs */
+            freed = slabs_free_address(current->full_slab_head, ptr);
+
+            /* move the slab to partial if freed successfully */
+            if (freed != NULL) {
+                freed->next = current->partial_slab_head;
+                current->partial_slab_head = freed;
+
+                return;
+            }
+        }
+
+        /* standard binary tree recursion (traversing) */
+        tree_free_address(current->left, ptr);
+        tree_free_address(current->right, ptr);
+    }
 }
